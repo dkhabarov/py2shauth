@@ -86,9 +86,10 @@ def validate_key(key, expectedkey):
 	else:
 		return False
 	
-def send_question():
+def send_question(phoneend):
+	print("We sent a security code to your phone number ending in "+phoneend+".")
 	try:
-		answer=raw_input("Please enter security code: ")
+		answer=raw_input("Enter security code:")
 	except KeyboardInterrupt:
 		print("\nRecv SIGINT. Exiting....\n")
 		logger.info('Recv SIGINT. Exiting...')
@@ -121,7 +122,7 @@ def main():
 	
 	if user in config['users'] and config['users'][user].has_key('phone'):
 		send_sms(login=str(config['sms_service']['login']), password=str(config['sms_service']['password']),to=str(config['users'][user]['phone']), code=code)
-		answer = send_question()
+		answer = send_question(str(config['users'][user]['phone'])[-4:len(str(config['users'][user]['phone']))])
 		validate=validate_key(answer, code)
 		if not validate:
 			print('Access denied!')
