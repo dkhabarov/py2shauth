@@ -17,12 +17,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os, sys, string, yaml
+import os, sys, string, yaml, logging
 from urllib2 import urlopen, URLError
 from urllib import quote
 from socket import getfqdn, gethostname
 from random import choice, randint
 from hashlib import sha512
+
+logger = logging.getLogger('py2shauth')
+hdlr = logging.FileHandler('/tmp/.py2shauth.log')
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+hdlr.setFormatter(formatter)
+logger.addHandler(hdlr) 
+logger.setLevel(logging.INFO)
 
 chars = string.ascii_letters + string.digits
 def get_security_code(config):
@@ -41,6 +48,7 @@ def get_token():
 		res=urlopen("http://sms.ru/auth/get_token")
 	except URLError:
 		print("An error occurred while sending a secret code. Please try again later.")
+		logger.error('Unable to get \'get_token\'')
 		sys.exit(1)
 	
 	return res.read()
@@ -60,10 +68,13 @@ def send_sms(login, password, to, code):
 		res=urlopen(url)
 	except URLError as errstr:
 		print("An error occurred while sending a secret code. Please try again later.")
+		logger.error('Unable to send sms message: %s' %(errstr))
 		sys.exit(1)
 	service_result=res.read().splitlines()
 	if service_result is not None and int(service_result[0]) != 100:
 		print("["+str(service_result[0])+"] An error occurred while sending a secret code. Please try again later.")
+		logger.error("Unable to send sms message when service returned code: %s"%(str(service_result[0])))
+		
 		sys.exit(1)
 		
 def validate_key(key, expectedkey):
@@ -80,30 +91,36 @@ def send_question():
 		answer=raw_input("Please enter security code: ")
 	except KeyboardInterrupt:
 		print("\nRecv SIGINT. Exiting....\n")
+		logger.info('Recv SIGINT. Exiting...')
 		sys.exit(1)
 		
 	if not (len(answer)== 0):
 		return answer
 	else:
 		print("Authentication failed! You're not sends security code!")
+		logger.error("Authentication failed! You're not sends security code!")
 		sys.exit(1) 
 
 def main():
+
+	
 	try:
 		fp=open("/usr/local/etc/.py2shauth.conf.yaml")
 	except IOError as errstr:
 		print(errstr)
+		logger.error(errstr)
 		sys.exit(1)
 	try:
 		config=yaml.load(fp.read())
 	except yaml.YAMLError as errstr:
 		print("Config error: %s" % errstr)
+		logger.error(errstr)
 		sys.exit(1)
 	
 	code=get_security_code(config)
 	user=os.getenv('USER')
 	if config['users'][user].has_key('exclude_ips') and exclude_ip(config['users'][user]['exclude_ips']):
-		print("Hello!")
+		logger.info("User=%s, DSTIP=%s; authentication successfully when this ip has been excluded." % (user, get_ip()))
 		os.execv(config['extra']['set_shell'], ['',])
 	
 	if user in config['users'] and config['users'][user].has_key('phone'):
@@ -112,9 +129,10 @@ def main():
 		validate=validate_key(answer, code)
 		if not validate:
 			print('Access denied!')
+			logger.info("User=%s, DSTIP=%s; authentication failed when recv bad security code." %(user,get_ip()))
 			sys.exit(1)
 		else:
-			print('Hello!')
+			logger.info("User=%s, DSTIP=%s; authentication successfully" % (user, get_ip()))
 			os.execv(config['extra']['set_shell'], ['',])
 	else:
 		if config['extra'].has_key('deny_access_for_none_user') and config['extra']['deny_access_for_none_user']:
