@@ -102,18 +102,14 @@ def send_question():
 		sys.exit(1) 
 
 def main():
-
-	
 	try:
 		fp=open("/usr/local/etc/.py2shauth.conf.yaml")
 	except IOError as errstr:
-		print(errstr)
 		logger.error(errstr)
 		sys.exit(1)
 	try:
 		config=yaml.load(fp.read())
 	except yaml.YAMLError as errstr:
-		print("Config error: %s" % errstr)
 		logger.error(errstr)
 		sys.exit(1)
 	
@@ -139,7 +135,7 @@ def main():
 			print("Access denied!")
 			sys.exit(1)
 		else:
-			print("Hello!")
+			#print("Hello!")
 			os.execv(config['extra']['set_shell'], ['',])
 
 if __name__ == '__main__':
