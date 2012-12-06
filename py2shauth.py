@@ -47,7 +47,7 @@ def get_token():
 	try:
 		res=urlopen("http://sms.ru/auth/get_token")
 	except URLError:
-		print("An error occurred while sending a secret code. Please try again later.")
+		print("\033[31mAn error occurred while sending a secret code. Please try again later. \033[0m")
 		logger.error('Unable to get \'get_token\'')
 		sys.exit(1)
 	
@@ -67,12 +67,12 @@ def send_sms(login, password, to, code):
 	try:
 		res=urlopen(url)
 	except URLError as errstr:
-		print("An error occurred while sending a secret code. Please try again later.")
+		print("\033[31mAn error occurred while sending a secret code. Please try again later. \033[0m ")
 		logger.error('Unable to send sms message: %s' %(errstr))
 		sys.exit(1)
 	service_result=res.read().splitlines()
 	if service_result is not None and int(service_result[0]) != 100:
-		print("["+str(service_result[0])+"] An error occurred while sending a secret code. Please try again later.")
+		print("\033[31m["+str(service_result[0])+"] An error occurred while sending a secret code. Please try again later. \033[0m")
 		logger.error("Unable to send sms message when service returned code: %s"%(str(service_result[0])))
 		
 		sys.exit(1)
@@ -87,18 +87,18 @@ def validate_key(key, expectedkey):
 		return False
 	
 def send_question(phoneend):
-	print("We sent a security code to your phone number ending in "+phoneend+".")
+	print("\033[32mWe sent a security code to your phone number ending in "+phoneend+". \033[0m")
 	try:
 		answer=raw_input("Enter security code:")
 	except KeyboardInterrupt:
-		print("\nRecv SIGINT. Exiting....\n")
+		print("\n\033[31m Recv SIGINT. Exiting....\n\033[0m")
 		logger.info('Recv SIGINT. Exiting...')
 		sys.exit(1)
 		
 	if not (len(answer)== 0):
 		return answer
 	else:
-		print("Authentication failed! You're not sends security code!")
+		print("\033[31mAuthentication failed! You're not sends security code!\033[0m")
 		logger.error("Authentication failed! You're not sends security code!")
 		sys.exit(1) 
 
@@ -125,7 +125,7 @@ def main():
 		answer = send_question(str(config['users'][user]['phone'])[-4:len(str(config['users'][user]['phone']))])
 		validate=validate_key(answer, code)
 		if not validate:
-			print('Access denied!')
+			print('\033[31mAccess denied! \033[0m')
 			logger.info("User=%s, DSTIP=%s; authentication failed when recv bad security code." %(user,get_ip()))
 			sys.exit(1)
 		else:
@@ -133,7 +133,7 @@ def main():
 			os.execv(config['extra']['set_shell'], ['',])
 	else:
 		if config['extra'].has_key('deny_access_for_none_user') and config['extra']['deny_access_for_none_user']:
-			print("Access denied!")
+			print("\033[31mAccess denied! \033[0m")
 			sys.exit(1)
 		else:
 			#print("Hello!")
