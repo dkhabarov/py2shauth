@@ -45,7 +45,7 @@ def exclude_ip(exclude_ips):
 
 def get_token():
 	try:
-		res=urlopen("http://sms.ru/auth/get_token")
+		res=urlopen(url="http://sms.ru/auth/get_token",timeout=10)
 	except URLError:
 		print("\033[31mAn error occurred while sending a secret code. Please try again later. \033[0m")
 		logger.error('Unable to get \'get_token\'')
@@ -65,7 +65,7 @@ def send_sms(login, password, to, code):
 
 	url="http://sms.ru/sms/send?login=%s&token=%s&sha512=%s&to=%s&text=%s&partner_id=3805" %(str(login),token,shahash,to,quote(msg))
 	try:
-		res=urlopen(url)
+		res=urlopen(url=url,timeout=10)
 	except URLError as errstr:
 		print("\033[31mAn error occurred while sending a secret code. Please try again later. \033[0m ")
 		logger.error('Unable to send sms message: %s' %(errstr))
