@@ -23,7 +23,13 @@ from urllib import quote
 from socket import getfqdn, gethostname
 from random import choice, randint
 from hashlib import sha512
-
+check_nets=False
+try:
+	from ipaddr import IPAddress, IPNetwork
+	check_nets=True
+except ImportError as errmsg:
+	print >> sys.stderr, "\033[31mWARNING!!!\033[0m "+str(errmsg)
+	
 logger = logging.getLogger('py2shauth')
 hdlr = logging.FileHandler('/tmp/.py2shauth.log')
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
@@ -42,6 +48,13 @@ def get_ip():
 def exclude_ip(exclude_ips):
 	if get_ip() in exclude_ips:
 		return True
+
+def exclude_net(nets):
+	if not IPAddress:
+		return None
+	for net in nets:
+		if IPAddress(get_ip()) in IPNetwork(net):
+			return True
 
 def get_token():
 	try:
@@ -79,7 +92,6 @@ def send_sms(login, password, to, code):
 		
 def validate_key(key, expectedkey):
 	if key == None:
-		send_question()
 		return False
 	elif key == expectedkey:
 		return True
@@ -89,7 +101,7 @@ def validate_key(key, expectedkey):
 def send_question(phoneend):
 	print("\033[32mWe sent a security code to your phone number ending in "+phoneend+". \033[0m")
 	try:
-		answer=raw_input("Enter security code:")
+		answer=raw_input("Enter security code: ")
 	except KeyboardInterrupt:
 		print("\n\033[31m Recv SIGINT. Exiting....\n\033[0m")
 		logger.info('Recv SIGINT. Exiting...')
@@ -119,25 +131,27 @@ def main():
 	if config['users'][user].has_key('exclude_ips') and exclude_ip(config['users'][user]['exclude_ips']):
 		logger.info("User=%s, DSTIP=%s; authentication successfully when this ip has been excluded." % (user, get_ip()))
 		os.execv(config['extra']['set_shell'], ['',])
-	
-	if user in config['users'] and config['users'][user].has_key('phone'):
-		send_sms(login=str(config['sms_service']['login']), password=str(config['sms_service']['password']),to=str(config['users'][user]['phone']), code=code)
-		answer = send_question(str(config['users'][user]['phone'])[-4:len(str(config['users'][user]['phone']))])
-		validate=validate_key(answer, code)
-		if not validate:
-			print('\033[31mAccess denied! \033[0m')
-			logger.info("User=%s, DSTIP=%s; authentication failed when recv bad security code." %(user,get_ip()))
-			sys.exit(1)
-		else:
-			logger.info("User=%s, DSTIP=%s; authentication successfully" % (user, get_ip()))
-			os.execv(config['extra']['set_shell'], ['',])
+	elif check_nets and config['users'][user].has_key('exclude_nets') and exclude_net(config['users'][user]['exclude_nets']):
+		logger.info("User=%s, DSTIP=%s; authentication successfully when this subnet has been excluded." % (user, get_ip()))
+		os.execv(config['extra']['set_shell'], ['',])
 	else:
-		if config['extra'].has_key('deny_access_for_none_user') and config['extra']['deny_access_for_none_user']:
-			print("\033[31mAccess denied! \033[0m")
-			sys.exit(1)
+		if user in config['users'] and config['users'][user].has_key('phone'):
+			send_sms(login=str(config['sms_service']['login']), password=str(config['sms_service']['password']),to=str(config['users'][user]['phone']), code=code)
+			answer = send_question(str(config['users'][user]['phone'])[-4:len(str(config['users'][user]['phone']))])
+			validate=validate_key(answer, code)
+			if not validate:
+				print('\033[31mAccess denied! \033[0m')
+				logger.info("User=%s, DSTIP=%s; authentication failed when recv bad security code." %(user,get_ip()))
+				sys.exit(1)
+			else:
+				logger.info("User=%s, DSTIP=%s; authentication successfully" % (user, get_ip()))
+				os.execv(config['extra']['set_shell'], ['',])
 		else:
-			#print("Hello!")
-			os.execv(config['extra']['set_shell'], ['',])
+			if config['extra'].has_key('deny_access_for_none_user') and config['extra']['deny_access_for_none_user']:
+				print("\033[31mAccess denied! \033[0m")
+				sys.exit(1)
+			else:
+				os.execv(config['extra']['set_shell'], ['',])
 
 if __name__ == '__main__':
 	main()
