@@ -128,16 +128,34 @@ def main():
 	
 	code=get_security_code(config)
 	user=os.getenv('USER')
-	if config['users'][user].has_key('exclude_ips') and exclude_ip(config['users'][user]['exclude_ips']):
+	
+	
+	userconfig="%s/.config/py2shauth.yaml" % (os.getenv("HOME"))
+	if os.path.isfile(userconfig):
+		try:
+			ufp=open(userconfig)
+		except IOError as errstr:
+			print("\033[31m"+errstr+"\033[0m")
+			sys.exit(1)
+		try:
+			usrcfg=yaml.load(ufp.read())
+		except yaml.YAMLError as errstr:
+			print("\033[31m"+errstr+"\033[0m")
+			sys.exit(1)
+	else:
+		print("\033[31m"+userconfig+" Error!\033[0m")
+		sys.exit(1)
+				
+	if usrcfg['users'][user].has_key('exclude_ips') and exclude_ip(usrcfg['users'][user]['exclude_ips']):
 		logger.info("User=%s, DSTIP=%s; authentication successfully when this ip has been excluded." % (user, get_ip()))
 		os.execv(config['extra']['set_shell'], ['',])
-	elif check_nets and config['users'][user].has_key('exclude_nets') and exclude_net(config['users'][user]['exclude_nets']):
+	elif check_nets and usrcfg['users'][user].has_key('exclude_nets') and exclude_net(usrcfg['users'][user]['exclude_nets']):
 		logger.info("User=%s, DSTIP=%s; authentication successfully when this subnet has been excluded." % (user, get_ip()))
 		os.execv(config['extra']['set_shell'], ['',])
 	else:
-		if user in config['users'] and config['users'][user].has_key('phone'):
-			send_sms(login=str(config['sms_service']['login']), password=str(config['sms_service']['password']),to=str(config['users'][user]['phone']), code=code)
-			answer = send_question(str(config['users'][user]['phone'])[-4:len(str(config['users'][user]['phone']))])
+		if user in usrcfg['users'] and usrcfg['users'][user].has_key('phone'):
+			send_sms(login=str(config['sms_service']['login']), password=str(config['sms_service']['password']),to=str(usrcfg['users'][user]['phone']), code=code)
+			answer = send_question(str(usrcfg['users'][user]['phone'])[-4:len(str(usrcfg['users'][user]['phone']))])
 			validate=validate_key(answer, code)
 			if not validate:
 				print('\033[31mAccess denied! \033[0m')
