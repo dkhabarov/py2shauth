@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os, sys, string, yaml, logging
+import os, sys, string, yaml, syslog
 from urllib2 import urlopen, URLError
 from urllib import quote
 from socket import getfqdn, gethostname
@@ -30,12 +30,11 @@ try:
 except ImportError as errmsg:
 	print >> sys.stderr, "\033[31mWARNING!!!\033[0m "+str(errmsg)
 	
-logger = logging.getLogger('py2shauth')
-hdlr = logging.FileHandler('/tmp/.py2shauth.log')
-formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-hdlr.setFormatter(formatter)
-logger.addHandler(hdlr) 
-logger.setLevel(logging.INFO)
+
+def logger(priority,msg):
+	syslog.openlog("py2shauth", syslog.LOG_PID)
+	syslog.syslog(priority,msg)
+	syslog.closelog()
 
 chars = string.ascii_letters + string.digits
 def get_security_code(config):
@@ -59,9 +58,9 @@ def exclude_net(nets):
 def get_token():
 	try:
 		res=urlopen(url="http://sms.ru/auth/get_token",timeout=10)
-	except URLError:
+	except URLError as errstr:
 		print("\033[31mAn error occurred while sending a secret code. Please try again later. \033[0m")
-		logger.error('Unable to get \'get_token\'')
+		logger(syslog.LOG_ERR,'Unable to get \'get_token\': %s' %(errstr))
 		sys.exit(1)
 	
 	return res.read()
@@ -81,12 +80,12 @@ def send_sms(login, password, to, code):
 		res=urlopen(url=url,timeout=10)
 	except URLError as errstr:
 		print("\033[31mAn error occurred while sending a secret code. Please try again later. \033[0m ")
-		logger.error('Unable to send sms message: %s' %(errstr))
+		logger(syslog.LOG_ERR,'Unable to send sms message: %s' %(errstr))
 		sys.exit(1)
 	service_result=res.read().splitlines()
 	if service_result is not None and int(service_result[0]) != 100:
 		print("\033[31m["+str(service_result[0])+"] An error occurred while sending a secret code. Please try again later. \033[0m")
-		logger.error("Unable to send sms message when service returned code: %s"%(str(service_result[0])))
+		logger(syslog.LOG_ERR,"Unable to send sms message when service returned code: %s"%(str(service_result[0])))
 		
 		sys.exit(1)
 		
@@ -104,26 +103,26 @@ def send_question(phoneend):
 		answer=raw_input("Enter security code: ")
 	except KeyboardInterrupt:
 		print("\n\033[31m Recv SIGINT. Exiting....\n\033[0m")
-		logger.info('Recv SIGINT. Exiting...')
+		logger(syslog.LOG_ERR,'Recv SIGINT. Exiting...')
 		sys.exit(1)
 		
 	if not (len(answer)== 0):
 		return answer
 	else:
 		print("\033[31mAuthentication failed! You're not sends security code!\033[0m")
-		logger.error("Authentication failed! You're not sends security code!")
+		logger(syslog.LOG_ERR,"Authentication failed! You're not sends security code!")
 		sys.exit(1) 
 
 def main():
 	try:
 		fp=open("/usr/local/etc/.py2shauth.conf.yaml")
 	except IOError as errstr:
-		logger.error(errstr)
+		logger(syslog.LOG_ERR, errstr)
 		sys.exit(1)
 	try:
 		config=yaml.load(fp.read())
 	except yaml.YAMLError as errstr:
-		logger.error(errstr)
+		logger(syslog.LOG_ERR,errstr)
 		sys.exit(1)
 	
 	code=get_security_code(config)
@@ -135,22 +134,25 @@ def main():
 		try:
 			ufp=open(userconfig)
 		except IOError as errstr:
-			print("\033[31m"+errstr+"\033[0m")
+			print("\033[31m[137]: Error! Please contact to system administrator!\033[0m")
+			logger(syslog.LOG_ERR,"IOError for %s: %s"%(userconfig,errstr))
 			sys.exit(1)
 		try:
 			usrcfg=yaml.load(ufp.read())
 		except yaml.YAMLError as errstr:
-			print("\033[31m"+errstr+"\033[0m")
+			print("\033[31m[143]: Error! Please contact to system administrator!\033[0m")
+			logger(syslog.LOG_INFO,"YAMLError: %s" %(errstr))
 			sys.exit(1)
 	else:
-		print("\033[31m"+userconfig+" Error!\033[0m")
+		print("\033[31m[147]: Error for user: "+user+". Please contact to system administrator!\033[0m")
+		logger(syslog.LOG_ERR,"Error for read: %s"%(userconfig))
 		sys.exit(1)
 				
-	if usrcfg['users'][user].has_key('exclude_ips') and exclude_ip(usrcfg['users'][user]['exclude_ips']):
-		logger.info("User=%s, DSTIP=%s; authentication successfully when this ip has been excluded." % (user, get_ip()))
+	if user in usrcfg['users'] and usrcfg['users'][user].has_key('exclude_ips') and exclude_ip(usrcfg['users'][user]['exclude_ips']):
+		logger(syslog.LOG_INFO,"User=%s, DSTIP=%s; authentication successfully when this ip has been excluded." % (user, get_ip()))
 		os.execv(config['extra']['set_shell'], ['',])
-	elif check_nets and usrcfg['users'][user].has_key('exclude_nets') and exclude_net(usrcfg['users'][user]['exclude_nets']):
-		logger.info("User=%s, DSTIP=%s; authentication successfully when this subnet has been excluded." % (user, get_ip()))
+	elif check_nets and user in usrcfg['users'] and usrcfg['users'][user].has_key('exclude_nets') and exclude_net(usrcfg['users'][user]['exclude_nets']):
+		logger(syslog.LOG_INFO,"User=%s, DSTIP=%s; authentication successfully when this subnet has been excluded." % (user, get_ip()))
 		os.execv(config['extra']['set_shell'], ['',])
 	else:
 		if user in usrcfg['users'] and usrcfg['users'][user].has_key('phone'):
@@ -158,15 +160,16 @@ def main():
 			answer = send_question(str(usrcfg['users'][user]['phone'])[-4:len(str(usrcfg['users'][user]['phone']))])
 			validate=validate_key(answer, code)
 			if not validate:
-				print('\033[31mAccess denied! \033[0m')
-				logger.info("User=%s, DSTIP=%s; authentication failed when recv bad security code." %(user,get_ip()))
+				print('\033[31m[163] Access denied! \033[0m')
+				logger(syslog.LOG_ERR,"Authentication failure for %s from %s" %(user,get_ip()))
 				sys.exit(1)
 			else:
-				logger.info("User=%s, DSTIP=%s; authentication successfully" % (user, get_ip()))
+				logger(syslog.LOG_INFO,"User=%s, DSTIP=%s; authentication successfully" % (user, get_ip()))
 				os.execv(config['extra']['set_shell'], ['',])
 		else:
 			if config['extra'].has_key('deny_access_for_none_user') and config['extra']['deny_access_for_none_user']:
-				print("\033[31mAccess denied! \033[0m")
+				print("\033[31m[171] Access denied! \033[0m")
+				logger(syslog.LOG_ERR,"Authentication failure for %s from %s" %(user,get_ip()))
 				sys.exit(1)
 			else:
 				os.execv(config['extra']['set_shell'], ['',])
