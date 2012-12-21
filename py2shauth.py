@@ -31,6 +31,8 @@ except ImportError as errmsg:
 	print >> sys.stderr, "\033[31mWARNING!!!\033[0m "+str(errmsg)
 	
 
+		
+
 def logger(priority,msg):
 	syslog.openlog("py2shauth", syslog.LOG_PID)
 	syslog.syslog(priority,msg)
@@ -54,7 +56,7 @@ def exclude_net(nets):
 	for net in nets:
 		if IPAddress(get_ip()) in IPNetwork(net):
 			return True
-
+		
 def get_token():
 	try:
 		res=urlopen(url="http://sms.ru/auth/get_token",timeout=10)
@@ -87,6 +89,24 @@ def send_sms(login, password, to, code):
 		print("\033[31m["+str(service_result[0])+"] An error occurred while sending a secret code. Please try again later. \033[0m")
 		logger(syslog.LOG_ERR,"Unable to send sms message when service returned code: %s"%(str(service_result[0])))
 		
+		sys.exit(1)
+
+def is_allowed_shell(shell):
+	for line in open("/etc/shells", 'rb').readlines():
+		line = line.strip()
+		if line == "":
+			continue
+		if line[0] == "#":
+			continue
+		if shell == line:
+			return True
+
+def run_command_line(config):
+	if is_allowed_shell(config['extra']['set_shell']):
+		os.execv(config['extra']['set_shell'], ['',])
+	else:
+		print("\033[31m[108]: Error! Please contact to system administrator!\033[0m")
+		logger(syslog.LOG_ERR,"Shell %s is not allowed!" %(config['extra']['set_shell']))
 		sys.exit(1)
 		
 def validate_key(key, expectedkey):
@@ -134,45 +154,45 @@ def main():
 		try:
 			ufp=open(userconfig)
 		except IOError as errstr:
-			print("\033[31m[137]: Error! Please contact to system administrator!\033[0m")
+			print("\033[31m[157]: Error! Please contact to system administrator!\033[0m")
 			logger(syslog.LOG_ERR,"IOError for %s: %s"%(userconfig,errstr))
 			sys.exit(1)
 		try:
 			usrcfg=yaml.load(ufp.read())
 		except yaml.YAMLError as errstr:
-			print("\033[31m[143]: Error! Please contact to system administrator!\033[0m")
+			print("\033[31m[163]: Error! Please contact to system administrator!\033[0m")
 			logger(syslog.LOG_INFO,"YAMLError: %s" %(errstr))
 			sys.exit(1)
 	else:
-		print("\033[31m[147]: Error for user: "+user+". Please contact to system administrator!\033[0m")
+		print("\033[31m[167]: Error for user: "+user+". Please contact to system administrator!\033[0m")
 		logger(syslog.LOG_ERR,"Error for read: %s"%(userconfig))
 		sys.exit(1)
 				
 	if user in usrcfg['users'] and usrcfg['users'][user].has_key('exclude_ips') and exclude_ip(usrcfg['users'][user]['exclude_ips']):
 		logger(syslog.LOG_INFO,"User=%s, DSTIP=%s; authentication successfully when this ip has been excluded." % (user, get_ip()))
-		os.execv(config['extra']['set_shell'], ['',])
+		run_command_line(config)
 	elif check_nets and user in usrcfg['users'] and usrcfg['users'][user].has_key('exclude_nets') and exclude_net(usrcfg['users'][user]['exclude_nets']):
 		logger(syslog.LOG_INFO,"User=%s, DSTIP=%s; authentication successfully when this subnet has been excluded." % (user, get_ip()))
-		os.execv(config['extra']['set_shell'], ['',])
+		run_command_line(config)
 	else:
 		if user in usrcfg['users'] and usrcfg['users'][user].has_key('phone'):
 			send_sms(login=str(config['sms_service']['login']), password=str(config['sms_service']['password']),to=str(usrcfg['users'][user]['phone']), code=code)
 			answer = send_question(str(usrcfg['users'][user]['phone'])[-4:len(str(usrcfg['users'][user]['phone']))])
 			validate=validate_key(answer, code)
 			if not validate:
-				print('\033[31m[163] Access denied! \033[0m')
+				print('\033[31m[183] Access denied! \033[0m')
 				logger(syslog.LOG_ERR,"Authentication failure for %s from %s" %(user,get_ip()))
 				sys.exit(1)
 			else:
 				logger(syslog.LOG_INFO,"User=%s, DSTIP=%s; authentication successfully" % (user, get_ip()))
-				os.execv(config['extra']['set_shell'], ['',])
+				run_command_line(config)
 		else:
 			if config['extra'].has_key('deny_access_for_none_user') and config['extra']['deny_access_for_none_user']:
-				print("\033[31m[171] Access denied! \033[0m")
+				print("\033[31m[191] Access denied! \033[0m")
 				logger(syslog.LOG_ERR,"Authentication failure for %s from %s" %(user,get_ip()))
 				sys.exit(1)
 			else:
-				os.execv(config['extra']['set_shell'], ['',])
+				run_command_line(config)
 
 if __name__ == '__main__':
 	main()
